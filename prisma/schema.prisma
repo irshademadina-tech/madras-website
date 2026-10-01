@@ -1,0 +1,271 @@
+// Madrasah Irshad-e-Madina — Online Quran School
+// Prisma schema (SQLite)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ============ Identity & Access ============
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  role         String   @default("PARENT") // PARENT | STUDENT | TEACHER | ADMIN
+  phone        String?
+  timezone     String   @default("Europe/London")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  teacherProfile    Teacher?
+  students          Student[]       @relation("ParentChildren")
+  ownedChildren     Student[]       @relation("GuardianUser")
+  assessmentReviews Assessment[]    @relation("Assessor")
+  auditLogs         AuditLog[]
+  notifications     Notification[]
+  enrollments       Enrollment[]    @relation("EnrollmentContact")
+}
+
+// ============ Teachers ============
+
+model Teacher {
+  id           String  @id @default(cuid())
+  userId       String  @unique
+  user         User    @relation(fields: [userId], references: [id])
+  title        String? // Qari / Hafiza / Qaria / Alimah
+  bio          String?
+  ijazah       String? // sanad / credential line
+  experience   Int     @default(0) // years
+  languages    String  @default("Urdu, English")
+  teachesBest  String? // e.g. "Beginner children, Tajweed for teens"
+  gender       String  @default("male") // male | female
+  photoUrl     String?
+  videoUrl     String?
+  published    Boolean @default(false)
+  active       Boolean @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  students     Student[]
+  lessons      Lesson[]
+  assessments  Assessment[]
+}
+
+// ============ Students & Guardians ============
+
+model Student {
+  id          String   @id @default(cuid())
+  name        String
+  age         Int?
+  level       String   @default("BEGINNER") // BEGINNER | QAIDA | NAZRA | TAJWEED | HIFZ
+  teacherId   String?
+  teacher     Teacher? @relation(fields: [teacherId], references: [id])
+  guardianId   String? // legacy text field for pilot sheets
+  guardianName String?
+  guardianUserId String?
+  guardian    User?    @relation("GuardianUser", fields: [guardianUserId], references: [id])
+  parentUserId String?
+  parent      User?    @relation("ParentChildren", fields: [parentUserId], references: [id])
+  timezone    String   @default("Europe/London")
+  status      String   @default("ACTIVE") // ACTIVE | PAUSED | WITHDRAWN | TRIAL
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  lessons      Lesson[]
+  assessments  Assessment[]
+  enrollments  Enrollment[]
+  progressUpdates ProgressUpdate[]
+}
+
+model Enrollment {
+  id          String   @id @default(cuid())
+  studentName String
+  studentAge  Int?
+  level       String   @default("BEGINNER")
+  parentName  String
+  email       String
+  phone       String?
+  whatsapp    String?
+  timezone    String   @default("Europe/London")
+  country     String   @default("UK")
+  program     String   @default("NAZRA") // QAIDA | NAZRA | TAJWEED | ISLAMIC_STUDIES | HIFZ
+  preferredTeacherGender String? // any | female
+  message     String?
+  // Trial booking
+  trialAt     DateTime?
+  trialLengthMin Int  @default(20)
+  trialStatus String   @default("REQUESTED") // REQUESTED | SCHEDULED | COMPLETED | NOSHOW | CANCELLED
+  trialMeetingUrl String?
+  // Pipeline
+  status      String   @default("NEW") // NEW | ASSESSMENT | PLAN_SENT | ENROLLED | REJECTED | WITHDRAWN
+  // Learning plan summary (written after assessment)
+  planSummary String?
+  studentId   String?
+  student     Student? @relation(fields: [studentId], references: [id])
+  contactUserId String?
+  contactUser User?    @relation("EnrollmentContact", fields: [contactUserId], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  invoices     Invoice[]
+  assessments  Assessment[]
+}
+
+// ============ Core Engine: Lessons / Assignments ============
+
+model Lesson {
+  id          String   @id @default(cuid())
+  studentId   String
+  student     Student  @relation(fields: [studentId], references: [id])
+  teacherId   String?
+  teacher     Teacher? @relation(fields: [teacherId], references: [id])
+  title       String   @default("Qur'an Lesson")
+  type        String   @default("QURAN") // QURAN | QAIDA | ISLAMIC (Namaz, Kalimas, Duas, Surahs)
+  // Range in global ayah ids (surah-major order over the whole mushaf, 1..6236)
+  startAyah   Int?
+  endAyah     Int?
+  // For non-Quran lessons
+  contentRef  String?  // content library item id
+  instructions String?
+  status      String   @default("ASSIGNED") // ASSIGNED | PRACTICING | READY_FOR_REVIEW | NEEDS_IMPROVEMENT | PASSED | MASTERED
+  assignedAt  DateTime @default(now())
+  dueAt       DateTime?
+  completedAt DateTime?
+  reviewedAt  DateTime?
+  feedback    String?
+  teacherNotes String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  corrections AyahCorrection[]
+  revisions   Revision[]
+  progressUpdates ProgressUpdate[]
+}
+
+// Word/ayah-level teacher corrections (shown to student in reader)
+model AyahCorrection {
+  id        String   @id @default(cuid())
+  lessonId  String
+  lesson    Lesson   @relation(fields: [lessonId], references: [id])
+  ayah      Int      // global ayah id
+  note      String
+  createdAt DateTime @default(now())
+}
+
+// Revision queue: spaced repetition 1d, 3d, 7d, 14d (teacher can override)
+model Revision {
+  id         String   @id @default(cuid())
+  lessonId   String
+  lesson     Lesson   @relation(fields: [lessonId], references: [id])
+  studentId  String
+  stage      Int      @default(0) // index into [1d, 3d, 7d, 14d]
+  dueAt      DateTime
+  status     String   @default("PENDING") // PENDING | DONE | SKIPPED
+  doneAt     DateTime?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+// Assessments from trial / periodic review
+model Assessment {
+  id          String   @id @default(cuid())
+  enrollmentId String?
+  enrollment  Enrollment? @relation(fields: [enrollmentId], references: [id])
+  studentId   String?
+  student     Student? @relation(fields: [studentId], references: [id])
+  teacherId   String?
+  teacher     Teacher? @relation(fields: [teacherId], references: [id])
+  reviewerId  String?
+  reviewer    User?    @relation("Assessor", fields: [reviewerId], references: [id])
+  strengths   String?
+  weaknesses  String?
+  startingPoint String? // e.g. "Qaida lesson 12, page 15"
+  plan        String?
+  recommendation String? // program + frequency
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// Parent-visible progress updates (what was taught today)
+model ProgressUpdate {
+  id        String   @id @default(cuid())
+  studentId String
+  student   Student  @relation(fields: [studentId], references: [id])
+  lessonId  String?
+  lesson    Lesson?  @relation(fields: [lessonId], references: [id])
+  summary   String
+  rating    Int?     // 1-5
+  createdAt DateTime @default(now())
+}
+
+// ============ Content Library (admin-editable) ============
+
+model ContentItem {
+  id        String   @id @default(cuid())
+  category  String   // QAIDA | NAMAZ | KALIMA | DUA | SURAH | ADAB | OTHER
+  title     String
+  arabic    String?
+  transliteration String?
+  translation    String?
+  notes     String?
+  order     Int      @default(0)
+  published Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ============ Payments (hosted checkout / manual) ============
+
+model Invoice {
+  id          String   @id @default(cuid())
+  enrollmentId String?
+  enrollment  Enrollment? @relation(fields: [enrollmentId], references: [id])
+  studentId   String?
+  number      String   @unique
+  amountCents Int
+  currency    String   @default("GBP")
+  period      String?  // e.g. "2026-03" or "per lesson pack"
+  status      String   @default("PENDING") // PENDING | PAID | WAIVED | REFUNDED | OVERDUE
+  method      String?  // card | bank | wise | paypal | manual
+  paidAt      DateTime?
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// ============ Notifications & Audit ============
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  title     String
+  body      String
+  link      String?
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+  action    String   // e.g. LESSON_ASSIGNED, LESSON_STATUS_CHANGED, ENROLLMENT_STATUS
+  entity    String
+  entityId  String?
+  detail    String?
+  createdAt DateTime @default(now())
+}
+
+// ============ Settings / site copy ============
+
+model Setting {
+  key   String @id
+  value String
+}
