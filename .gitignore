@@ -1,2 +1,23 @@
 node_modules/
+.next/
+out/
+build/
 dist/
+coverage/
+.vercel/
+
+# Local environment files
+.env*
+!.env.example
+
+# Debug logs and generated files
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.tsbuildinfo
+*.pem
+
+# Operating system files
+.DS_Store
+Thumbs.db
