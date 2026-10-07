@@ -126,22 +126,6 @@ async function main() {
     },
   });
 
-  // Student login (child account)
-  const studentUser = await db.user.upsert({
-    where: { email: "student@example.com" },
-    update: {},
-    create: {
-      email: "student@example.com",
-      name: "Ayesha K.",
-      passwordHash: hashPassword("student123"),
-      role: "STUDENT",
-      timezone: "Europe/London",
-    },
-  });
-  await db.student.update({ where: { id: s1.id }, data: {} });
-  // link by name convention (in production this would be a proper relation)
-  console.log("student user:", studentUser.email);
-
   // ---- Content library ----
   const contentCount = await db.contentItem.count();
   if (contentCount === 0) {
@@ -356,7 +340,7 @@ async function main() {
   }
 
   console.log("Seed complete.");
-  console.log("Logins: admin@irshademadina.com/admin123, qari@irshademadina.com/teacher123, hafiza@irshademadina.com/teacher123, parent@example.com/parent123, student@example.com/student123");
+  console.log("Logins: admin@irshademadina.com/admin123, qari@irshademadina.com/teacher123, hafiza@irshademadina.com/teacher123, parent@example.com/parent123");
 }
 
 main()

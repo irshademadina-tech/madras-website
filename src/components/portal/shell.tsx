@@ -57,7 +57,7 @@ export function PortalShell({
 
   const role = session?.user?.role as string | undefined;
   const roleLabel =
-    role === "TEACHER" ? "Teacher Portal" : role === "PARENT" ? "Parent Portal" : role === "ADMIN" ? "Admin" : "My Learning";
+    role === "TEACHER" ? "Teacher Portal" : role === "PARENT" ? "Parent Portal" : "Admin";
 
   if (status === "loading") {
     return (
@@ -89,6 +89,7 @@ export function PortalShell({
 
   const tabs: { id: string; label: string }[] = [];
   if (role === "TEACHER") {
+    tabs.push({ id: "live", label: "Live Lessons" });
     tabs.push({ id: "students", label: "My Students" });
     tabs.push({ id: "revisions", label: "Revision Queue" });
   } else if (role === "PARENT") {
@@ -102,8 +103,6 @@ export function PortalShell({
     tabs.push({ id: "content", label: "Content Library" });
     tabs.push({ id: "invoices", label: "Payments" });
     tabs.push({ id: "audit", label: "Audit Log" });
-  } else {
-    tabs.push({ id: "today", label: "Today's Learning" });
   }
 
   return (

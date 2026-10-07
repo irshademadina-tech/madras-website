@@ -21,7 +21,6 @@ const DEMO_ACCOUNTS = [
   { label: "Teacher (Qari Muhammad Iqbal)", email: "qari@irshademadina.com", password: "teacher123" },
   { label: "Teacher (Hafiza Ayesha Iqbal)", email: "hafiza@irshademadina.com", password: "teacher123" },
   { label: "Parent", email: "parent@example.com", password: "parent123" },
-  { label: "Student", email: "student@example.com", password: "student123" },
   { label: "Admin", email: "admin@irshademadina.com", password: "admin123" },
 ];
 

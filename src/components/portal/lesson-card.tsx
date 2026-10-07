@@ -1,9 +1,8 @@
 "use client";
 
-// Lesson card with integrated reader dialogs for all roles.
-// - Student: opens reader at lesson range (highlighted), Practice / Mark Ready buttons
-// - Parent: read-only reader view + WhatsApp share card
-// - Teacher: review mode with ayah-level corrections
+// Lesson card with integrated reader dialogs.
+// - Parent: read-only reader view of the assigned range + WhatsApp share card
+// - Teacher: in-lesson correction mode + one-tap "Go live" interactive room
 
 import { useState } from "react";
 import { useSession } from "next-auth/react";
@@ -13,8 +12,7 @@ import {
   ClipboardList,
   Loader2,
   MessageCircle,
-  PlayCircle,
-  Send,
+  Radio,
   Sparkles,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -101,19 +99,40 @@ export function LessonCard({
     return res.ok;
   }
 
+  async function goLive() {
+    setBusy(true);
+    try {
+      const res = await fetch("/api/live", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          lessonId: lesson.id,
+          title: `${lesson.title ?? "Qur'an Lesson"} — ${studentName}`,
+          startAyah: lesson.startAyah ?? undefined,
+          endAyah: lesson.endAyah ?? undefined,
+        }),
+      });
+      if (res.ok) {
+        const d = await res.json();
+        window.open(`/live/${d.session.token}`, "_blank");
+      } else {
+        setError("Could not start the live room.");
+      }
+    } catch {
+      setError("Could not start the live room.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function submitReview() {
     const ok = await act({ action: "REVIEW", status: verdict, feedback });
     if (ok) setReviewOpen(false);
   }
 
-  const canPractice = role === "STUDENT" || role === "PARENT";
   const canReview = role === "TEACHER" || role === "ADMIN";
 
   const status = lesson.status;
-  const showPractice =
-    canPractice && ["ASSIGNED", "NEEDS_IMPROVEMENT"].includes(status);
-  const showReady =
-    canPractice && ["PRACTICING", "ASSIGNED", "NEEDS_IMPROVEMENT"].includes(status);
 
   return (
     <Card className="flex flex-col">
@@ -190,27 +209,16 @@ export function LessonCard({
           </Button>
         )}
 
-        {showPractice && (
+        {canReview && isQuran && (
           <Button
+            size="sm"
             variant="outline"
-            size="sm"
-            className="gap-1.5"
+            className="gap-1.5 border-primary/40 text-primary hover:bg-primary/5"
             disabled={busy}
-            onClick={() => act({ action: "START_PRACTICE" })}
+            onClick={goLive}
           >
-            <PlayCircle className="h-4 w-4" aria-hidden />
-            Practice
-          </Button>
-        )}
-        {showReady && (
-          <Button
-            size="sm"
-            className="gap-1.5"
-            disabled={busy}
-            onClick={() => act({ action: "MARK_READY" })}
-          >
-            <Send className="h-4 w-4" aria-hidden />
-            Mark Ready
+            <Radio className="h-4 w-4" aria-hidden />
+            Go Live
           </Button>
         )}
 

@@ -3,7 +3,7 @@ import type { RoleSession } from "@/lib/auth-options";
 
 // Role-based access: resolve which student ids a session may read/write.
 // ADMIN: all. TEACHER: their assigned students. PARENT: their children.
-// STUDENT: themselves (matched via parentUser's children by login email convention handled at query time).
+// There is no STUDENT portal account — pupils join live lesson share links only.
 export async function accessibleStudentIds(session: RoleSession): Promise<string[]> {
   const role = session.user!.role!;
   const uid = session.user!.id!;
@@ -20,16 +20,6 @@ export async function accessibleStudentIds(session: RoleSession): Promise<string
   if (role === "PARENT") {
     const kids = await db.student.findMany({
       where: { OR: [{ parentUserId: uid }, { guardianUserId: uid }] },
-      select: { id: true },
-    });
-    return kids.map((s) => s.id);
-  }
-  if (role === "STUDENT") {
-    const me = await db.user.findUnique({ where: { id: uid } });
-    if (!me) return [];
-    // Students are matched by name to the parent's children record (demo convention)
-    const kids = await db.student.findMany({
-      where: { OR: [{ parentUserId: { not: null } }, { guardianUserId: { not: null } }], name: me.name },
       select: { id: true },
     });
     return kids.map((s) => s.id);

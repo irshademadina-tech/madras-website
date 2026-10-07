@@ -54,7 +54,7 @@ export const authOptions: NextAuthOptions = {
 import { getServerSession } from "next-auth";
 import type { Session } from "next-auth";
 
-export type Role = "PARENT" | "STUDENT" | "TEACHER" | "ADMIN";
+export type Role = "PARENT" | "TEACHER" | "ADMIN";
 
 export interface RoleSession extends Session {
   user?: {

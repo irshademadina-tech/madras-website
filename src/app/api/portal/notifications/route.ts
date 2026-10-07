@@ -5,7 +5,7 @@ import { requireRole } from "@/lib/auth-options";
 
 // GET /api/portal/notifications — my notifications
 export async function GET() {
-  const session = await requireRole(["TEACHER", "PARENT", "STUDENT", "ADMIN"]);
+  const session = await requireRole(["TEACHER", "PARENT", "ADMIN"]);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const notifications = await db.notification.findMany({
@@ -20,7 +20,7 @@ export async function GET() {
 const patchSchema = z.object({ id: z.string().optional(), all: z.boolean().optional() });
 
 export async function PATCH(req: NextRequest) {
-  const session = await requireRole(["TEACHER", "PARENT", "STUDENT", "ADMIN"]);
+  const session = await requireRole(["TEACHER", "PARENT", "ADMIN"]);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const parsed = patchSchema.safeParse(await req.json());
