@@ -17,7 +17,7 @@ model User {
   email        String   @unique
   passwordHash String
   name         String
-  role         String   @default("PARENT") // PARENT | STUDENT | TEACHER | ADMIN
+  role         String   @default("PARENT") // PARENT | TEACHER | ADMIN
   phone        String?
   timezone     String   @default("Europe/London")
   createdAt    DateTime @default(now())
@@ -146,6 +146,24 @@ model Lesson {
   corrections AyahCorrection[]
   revisions   Revision[]
   progressUpdates ProgressUpdate[]
+  liveSessions LiveSession[]
+}
+
+// Live interactive Quran lesson — teacher shares a link, both read & highlight words/ayat in realtime
+model LiveSession {
+  id        String   @id @default(cuid())
+  token     String   @unique // secret share-link id (students join with the link only — no login)
+  lessonId  String?
+  lesson    Lesson?  @relation(fields: [lessonId], references: [id])
+  teacherUserId String
+  title     String   @default("Live Qur'an Lesson")
+  startAyah Int?        // global ayah id range opened by the teacher
+  endAyah   Int?
+  highlights String  @default("[]") // JSON: [{ayah, wordIdx?, kind:"correct"|"mistake", ts}]
+  scrollAyah Int?       // last synced "teacher is here" global ayah id
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 // Word/ayah-level teacher corrections (shown to student in reader)

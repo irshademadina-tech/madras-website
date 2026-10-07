@@ -6,7 +6,7 @@ import { accessibleStudentIds } from "@/lib/access";
 
 // GET /api/portal/revisions — due & upcoming revisions for the caller's students
 export async function GET() {
-  const session = await requireRole(["TEACHER", "PARENT", "STUDENT", "ADMIN"]);
+  const session = await requireRole(["TEACHER", "PARENT", "ADMIN"]);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const studentIds = await accessibleStudentIds(session as RoleSession);
@@ -32,7 +32,7 @@ const patchSchema = z.object({
 });
 
 export async function PATCH(req: NextRequest) {
-  const session = await requireRole(["TEACHER", "STUDENT", "ADMIN", "PARENT"]);
+  const session = await requireRole(["TEACHER", "PARENT", "ADMIN"]);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const parsed = patchSchema.safeParse(await req.json());

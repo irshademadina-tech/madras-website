@@ -6,7 +6,7 @@ import { accessibleStudentIds, canAccessStudent } from "@/lib/access";
 
 // GET /api/portal/overview — role-aware dashboard payload
 export async function GET() {
-  const session = await requireRole(["TEACHER", "PARENT", "STUDENT", "ADMIN"]);
+  const session = await requireRole(["TEACHER", "PARENT", "ADMIN"]);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const role = session.user!.role!;

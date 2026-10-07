@@ -1,12 +1,13 @@
 "use client";
 
 // The Portal — role-aware application.
-// TEACHER: today's students, assign, review. STUDENT: Today's Learning.
+// TEACHER: live lessons, my students, revision queue.
 // PARENT: children progress + invoices. ADMIN: full management.
+// There is no student portal any more — pupils join the teacher's live link.
 
 import { useCallback, useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
-import { CalendarClock, Plus } from "lucide-react";
+import { CalendarClock, Check, Copy, Loader2, Plus, Radio } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -77,7 +78,7 @@ function PortalInner() {
   const activeTab =
     hash ||
     (role === "TEACHER"
-      ? "students"
+      ? "live"
       : role === "PARENT"
         ? "children"
         : role === "ADMIN"
@@ -115,15 +116,12 @@ function PortalInner() {
               ? "Teacher Portal"
               : role === "PARENT"
                 ? "Parent Portal"
-                : role === "ADMIN"
-                  ? "Administration"
-                  : "My Learning"}
+                : "Administration"}
           </h1>
           <p className="text-sm text-muted-foreground">
             {role === "TEACHER" &&
               (data?.students.length ?? 0) + " students · " + (revisions?.due.length ?? 0) + " revisions due"}
             {role === "PARENT" && "Your children's learning, at a glance"}
-            {role === "STUDENT" && "Assalamu alaikum, " + (data?.user.name ?? "") + "!"}
             {role === "ADMIN" && "Madrasah operations"}
           </p>
         </div>
@@ -134,9 +132,14 @@ function PortalInner() {
       {role === "TEACHER" && (
         <Tabs value={activeTab} onValueChange={(v) => (window.location.hash = v)}>
           <TabsList className="mb-4">
+            <TabsTrigger value="live">Live Lessons</TabsTrigger>
             <TabsTrigger value="students">My Students</TabsTrigger>
             <TabsTrigger value="revisions">Revision Queue</TabsTrigger>
           </TabsList>
+
+          <TabsContent value="live" className="space-y-6">
+            <LiveLessonsView />
+          </TabsContent>
 
           <TabsContent value="students" className="space-y-6">
             {(data?.students ?? []).length === 0 && (
@@ -239,76 +242,6 @@ function PortalInner() {
             </div>
           </TabsContent>
         </Tabs>
-      )}
-
-      {/* ============ STUDENT VIEW ============ */}
-      {role === "STUDENT" && (
-        <div className="mx-auto max-w-3xl space-y-6">
-          <Card className="border-primary/30 bg-primary/5">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-center font-serif text-xl">
-                Today&apos;s Learning
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {(() => {
-                const students = data?.students ?? [];
-                if (students.length === 0) {
-                  return (
-                    <p className="py-6 text-center text-sm text-muted-foreground">
-                      Your teacher will assign your first lesson soon, insha&apos;Allah.
-                    </p>
-                  );
-                }
-                const s = students[0];
-                const active = s.lessons.filter((l) =>
-                  ["ASSIGNED", "PRACTICING", "READY_FOR_REVIEW", "NEEDS_IMPROVEMENT"].includes(l.status)
-                );
-                return (
-                  <div className="space-y-3">
-                    {active.length === 0 && (
-                      <p className="py-4 text-center text-sm text-muted-foreground">
-                        All done! Waiting for your teacher&apos;s next assignment. 🌟
-                      </p>
-                    )}
-                    {active.map((l) => (
-                      <LessonCard key={l.id} lesson={l} studentName={s.name} onChanged={load} />
-                    ))}
-                  </div>
-                );
-              })()}
-            </CardContent>
-          </Card>
-
-          {(() => {
-            const students = data?.students ?? [];
-            const s = students[0];
-            const passed = s?.lessons.filter((l) =>
-              ["PASSED", "MASTERED"].includes(l.status)
-            ) ?? [];
-            if (passed.length === 0) return null;
-            return (
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-base">Completed lessons</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-2">
-                    {passed.map((l) => (
-                      <div
-                        key={l.id}
-                        className="flex items-center justify-between rounded-lg border border-border p-3 text-sm"
-                      >
-                        <span>{l.title ?? (l.startAyah ? formatRange(l.startAyah, l.endAyah!) : l.contentRef)}</span>
-                        <StatusBadge status={l.status} />
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })()}
-        </div>
       )}
 
       {/* ============ PARENT VIEW ============ */}
@@ -494,6 +427,223 @@ function ParentInvoices() {
         )}
       </CardContent>
     </Card>
+  );
+}
+
+// ---------- Live lessons (teacher) ----------
+interface LiveSessionLite {
+  id: string;
+  token: string;
+  title: string;
+  startAyah: number | null;
+  endAyah: number | null;
+  active: boolean;
+  highlights: number;
+  updatedAt: string;
+}
+
+function LiveLessonsView() {
+  const [sessions, setSessions] = useState<LiveSessionLite[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [creating, setCreating] = useState<string | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const d = await fetch("/api/live").then((r) => r.json());
+      setSessions(d.sessions ?? []);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  async function createFor(
+    studentId: string,
+    lesson?: { id: string; start: number; end: number; name: string }
+  ) {
+    setCreating(studentId);
+    const res = await fetch("/api/live", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        lessonId: lesson?.id,
+        title: lesson ? `Live lesson — ${lesson.name}` : "Live Qur'an Lesson",
+        startAyah: lesson?.start,
+        endAyah: lesson?.end,
+      }),
+    });
+    setCreating(null);
+    if (res.ok) {
+      const d = await res.json();
+      await load();
+      // open the room so the teacher can start presenting immediately
+      window.open(`/live/${d.session.token}`, "_blank");
+    }
+  }
+
+  async function copyLink(s: LiveSessionLite) {
+    try {
+      await navigator.clipboard.writeText(`${window.location.origin}/live/${s.token}`);
+      setCopiedId(s.id);
+      setTimeout(() => setCopiedId(null), 1800);
+    } catch {
+      /* clipboard unavailable */
+    }
+  }
+
+  return (
+    <>
+      <SectionTitle
+        title="Live Interactive Lessons"
+        subtitle="Start a live room and share its link with your student — no login needed for them. Both of you highlight words together, and your scrolling mirrors to their screen."
+      />
+
+      {loading ? (
+        <Skeleton className="h-40" />
+      ) : (
+        <div className="grid gap-4 lg:grid-cols-2">
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Radio className="h-4 w-4 text-primary" aria-hidden /> Go live with a student
+              </CardTitle>
+              <CardDescription>
+                The room opens at the student&apos;s current Quran lesson range.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {(data?.students ?? []).length === 0 && (
+                <p className="py-4 text-center text-sm text-muted-foreground">
+                  No students assigned yet.
+                </p>
+              )}
+              {(data?.students ?? []).map((s) => {
+                const quranLessons = s.lessons.filter(
+                  (l) => l.type === "QURAN" && l.startAyah && l.endAyah
+                );
+                const current =
+                  quranLessons.find((l) =>
+                    ["ASSIGNED", "PRACTICING", "READY_FOR_REVIEW", "NEEDS_IMPROVEMENT"].includes(l.status)
+                  ) ?? quranLessons[0];
+                return (
+                  <div
+                    key={s.id}
+                    className="flex items-center justify-between gap-2 rounded-lg border border-border p-3"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium">{s.name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {current
+                          ? `Current: ${formatRange(current.startAyah!, current.endAyah!)}`
+                          : "No Quran lesson yet — opens at Al-Fatiha"}
+                      </p>
+                    </div>
+                    <Button
+                      size="sm"
+                      className="shrink-0 gap-1.5"
+                      disabled={creating !== null}
+                      onClick={() =>
+                        createFor(
+                          s.id,
+                          current
+                            ? {
+                                id: current.id,
+                                start: current.startAyah!,
+                                end: current.endAyah!,
+                                name: s.name,
+                              }
+                            : undefined
+                        )
+                      }
+                    >
+                      {creating === s.id ? (
+                        <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                      ) : (
+                        <Radio className="h-4 w-4" aria-hidden />
+                      )}
+                      Go live
+                    </Button>
+                  </div>
+                );
+              })}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">Your live rooms</CardTitle>
+              <CardDescription>
+                Send the link over WhatsApp or Zoom chat — one tap and the student is with you.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {sessions.length === 0 ? (
+                <p className="py-4 text-center text-sm text-muted-foreground">
+                  No live rooms yet. Start one on the left.
+                </p>
+              ) : (
+                <ScrollArea className="max-h-[26rem]">
+                  <div className="space-y-2 pe-2">
+                    {sessions.map((s) => (
+                      <div
+                        key={s.id}
+                        className="rounded-lg border border-border p-3"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="truncate text-sm font-medium">{s.title}</p>
+                          <span
+                            className={
+                              "shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold " +
+                              (s.active
+                                ? "bg-emerald-600/10 text-emerald-700"
+                                : "bg-neutral-500/10 text-neutral-600")
+                            }
+                          >
+                            {s.active ? "LIVE" : "ENDED"}
+                          </span>
+                        </div>
+                        <p className="mt-0.5 text-xs text-muted-foreground">
+                          {s.startAyah && s.endAyah
+                            ? formatRange(s.startAyah, s.endAyah)
+                            : "Full mushaf"}{" "}
+                          · {s.highlights} highlights ·{" "}
+                          {new Date(s.updatedAt).toLocaleString("en-GB", {
+                            day: "numeric",
+                            month: "short",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                        </p>
+                        <div className="mt-2 flex items-center gap-2">
+                          <Button size="sm" variant="outline" className="gap-1.5" onClick={() => copyLink(s)}>
+                            {copiedId === s.id ? (
+                              <Check className="h-4 w-4 text-primary" aria-hidden />
+                            ) : (
+                              <Copy className="h-4 w-4" aria-hidden />
+                            )}
+                            {copiedId === s.id ? "Copied" : "Copy link"}
+                          </Button>
+                          <Button size="sm" asChild>
+                            <a href={`/live/${s.token}`} target="_blank" rel="noreferrer">
+                              Open room
+                            </a>
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </ScrollArea>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
+    </>
   );
 }
 

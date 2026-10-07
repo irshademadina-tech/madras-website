@@ -15,7 +15,7 @@ const STATUSES = [
 
 // PATCH /api/portal/lessons/[id] — update status / feedback / corrections
 const patchSchema = z.object({
-  action: z.enum(["START_PRACTICE", "MARK_READY", "REVIEW", "ADD_CORRECTION", "REMOVE_CORRECTION", "UPDATE_NOTES"]),
+  action: z.enum(["REVIEW", "ADD_CORRECTION", "REMOVE_CORRECTION", "UPDATE_NOTES"]),
   status: z.enum(STATUSES).optional(),
   feedback: z.string().max(2000).optional(),
   teacherNotes: z.string().max(2000).optional(),
@@ -31,7 +31,7 @@ const patchSchema = z.object({
 const REVISION_STAGES_DAYS = [1, 3, 7, 14];
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const session = await requireRole(["TEACHER", "STUDENT", "ADMIN", "PARENT"]);
+  const session = await requireRole(["TEACHER", "PARENT", "ADMIN"]);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const role = session.user!.role!;
 
@@ -54,44 +54,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 
   // --- Permission rules ---
-  // Student: START_PRACTICE, MARK_READY only
-  if ((role === "STUDENT" || role === "PARENT") && !["START_PRACTICE", "MARK_READY"].includes(d.action)) {
-    return NextResponse.json({ error: "Only teachers can review lessons" }, { status: 403 });
-  }
-  // Teacher: REVIEW, ADD_CORRECTION, REMOVE_CORRECTION, UPDATE_NOTES
-  if (role === "TEACHER" && ["START_PRACTICE", "MARK_READY"].includes(d.action)) {
-    return NextResponse.json({ error: "Students mark their own practice" }, { status: 403 });
+  // Only teachers/admins act on lessons now (students learn live via share links).
+  if (role === "PARENT") {
+    return NextResponse.json({ error: "Only teachers can update lessons" }, { status: 403 });
   }
 
   switch (d.action) {
-    case "START_PRACTICE": {
-      if (lesson.status !== "ASSIGNED" && lesson.status !== "NEEDS_IMPROVEMENT") {
-        return NextResponse.json({ error: "Cannot start practice in this state" }, { status: 400 });
-      }
-      await db.lesson.update({ where: { id }, data: { status: "PRACTICING" } });
-      break;
-    }
-    case "MARK_READY": {
-      if (lesson.status !== "PRACTICING" && lesson.status !== "NEEDS_IMPROVEMENT" && lesson.status !== "ASSIGNED") {
-        return NextResponse.json({ error: "Practice the lesson first" }, { status: 400 });
-      }
-      await db.lesson.update({ where: { id }, data: { status: "READY_FOR_REVIEW" } });
-      // notify teacher
-      if (lesson.teacherId) {
-        const teacher = await db.teacher.findUnique({ where: { id: lesson.teacherId } });
-        if (teacher) {
-          await db.notification.create({
-            data: {
-              userId: teacher.userId,
-              title: "Student marked lesson ready",
-              body: `${lesson.student.name} is ready for review: ${lesson.title ?? "lesson"}.`,
-              link: "/portal",
-            },
-          });
-        }
-      }
-      break;
-    }
     case "REVIEW": {
       if (!d.status || !["NEEDS_IMPROVEMENT", "PASSED", "MASTERED"].includes(d.status)) {
         return NextResponse.json({ error: "Review needs a verdict status" }, { status: 400 });
